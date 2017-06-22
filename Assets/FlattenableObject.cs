@@ -28,29 +28,34 @@ public class FlattenableObject : MonoBehaviour {
 			showPolygonPoints = false;
 			polygonPoints.Clear();
 		} else {
+			// Get convex hull of object
 			Dictionary<Vector2, Vector3> objectPoints = new Dictionary<Vector2, Vector3>();
 			List<Vector2> points = GetScreenPositionsFromMeshVertices(camera, ref objectPoints);
 			polygonPoints = GetConvexHull(points, ref objectPoints);
 			//showPolygonPoints = true;
-			Poly2Mesh.Polygon flatShape = new Poly2Mesh.Polygon();
 
+			// Convert convex hull to a list of coplanar points
+			Poly2Mesh.Polygon flatShape = new Poly2Mesh.Polygon();
 			List<Vector3> hullPoints = GetHullPoints(polygonPoints, objectPoints);
 			Vector3 closest = GetClosestPoint(hullPoints, camera.transform.position);
 			List<Vector3> planePoints = MovePointsToPlane(hullPoints, closest, camera.transform.position - closest);
 
 			// Attempt to "thicken" flat object
-			// > > > Need to get inverse of vector (locally)
-			// Vector3 normVector = (B.position-A.position).normalized;
- 			// C.position = A.position + normVector*ExtenDis;
-			// http://answers.unity3d.com/questions/1139633/extending-a-vector.html
-			Vector3 normVector = (closest - camera.transform.position); //transform.InverseTransformPoint(closest); // we want no line
-			Vector3 farPoint = camera.transform.position + normVector;
-			Debug.DrawLine(camera.transform.position, farPoint, Color.red, 5000f);
-			GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-			sphere.transform.localScale -= new Vector3(0.95f, 0.95f, 0.95f);
-			sphere.transform.position = farPoint;
-			Debug.Log("farPoint: " + farPoint);
-			//planePoints.AddRange(MovePointsToPlane(planePoints, farPoint, closest - camera.transform.position));
+			Vector3 objDistance = (closest - camera.transform.position);
+			Vector3 farPoint = camera.transform.position + objDistance + (objDistance.normalized * .1f);
+			List<Vector3> farPlanePoints = MovePointsToPlane(planePoints, farPoint, objDistance);
+
+			// Link pairs in planePoints and farPlanePoints
+			List<List<Vector3>> allPlanePoints = new List<List<Vector3>>() { planePoints, farPlanePoints };
+			for (int i = 0; i < planePoints.Count(); i++) {
+				int j = (i == planePoints.Count() - 1) ? 0 : i + 1;
+				allPlanePoints.Add(new List<Vector3>() { 
+					planePoints[i], planePoints[j], farPlanePoints[i], farPlanePoints[j] 
+				});
+			}
+
+			// Create meshes from all plane points
+
 
 			flatShape.outside = planePoints;
 			GameObject flatObject = Poly2Mesh.CreateGameObject(flatShape, "Flat" + name);
@@ -59,6 +64,12 @@ public class FlattenableObject : MonoBehaviour {
 			//flatRb.AddForce(new Vector3(0f, 3f, 0f), ForceMode.Impulse);
 			Renderer flatRend = flatObject.GetComponent<Renderer>();
 			flatRend.material = rend.material;
+
+			foreach (Vector3 ppt in planePoints) {
+				GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+				sphere.transform.localScale -= new Vector3(0.95f, 0.95f, 0.95f);
+				sphere.transform.position = ppt;
+			}
 
 			// 6/6: Can't add MeshCollider... 3d-ify object a bit? Use move point to plane to make a dupe set a slight bit away?
 			//		Make backside visible? http://answers.unity3d.com/questions/280741/how-make-visible-the-back-face-of-a-mesh.html
