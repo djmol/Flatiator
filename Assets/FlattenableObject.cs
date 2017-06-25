@@ -55,15 +55,31 @@ public class FlattenableObject : MonoBehaviour {
 			}
 
 			// Create meshes from all plane points
+			// (This probably won't work)
+			CombineInstance[] combine = new CombineInstance[allPlanePoints.Count()];
+			int k = 0;
+			foreach (List<Vector3> pointSet in allPlanePoints) {
+				Poly2Mesh.Polygon planePoly = new Poly2Mesh.Polygon();
+				planePoly.outside = pointSet;
+				GameObject planeObject = Poly2Mesh.CreateGameObject(planePoly, "Flat" + k);
+				combine[k].mesh = planeObject.GetComponent<MeshFilter>().mesh;
+				//planeObject.active = false;
+				k++;
+			}
 
+			GameObject flatObject = new GameObject();
+			flatObject.AddComponent<MeshFilter>();
+			flatObject.GetComponent<MeshFilter>().mesh = new Mesh();
+			flatObject.GetComponent<MeshFilter>().mesh.CombineMeshes(combine);
+			Debug.Log(flatObject.GetComponent<MeshFilter>().mesh.vertices.Count());
 
-			flatShape.outside = planePoints;
-			GameObject flatObject = Poly2Mesh.CreateGameObject(flatShape, "Flat" + name);
-			flatObject.AddComponent<MeshCollider>();
+			//flatShape.outside = planePoints;
+			//GameObject flatObject = Poly2Mesh.CreateGameObject(flatShape, "Flat" + name);
+			//flatObject.AddComponent<MeshCollider>();
 			//Rigidbody flatRb = flatObject.AddComponent<Rigidbody>();
 			//flatRb.AddForce(new Vector3(0f, 3f, 0f), ForceMode.Impulse);
-			Renderer flatRend = flatObject.GetComponent<Renderer>();
-			flatRend.material = rend.material;
+			//Renderer flatRend = flatObject.GetComponent<Renderer>();
+			//flatRend.material = rend.material;
 
 			foreach (Vector3 ppt in planePoints) {
 				GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
