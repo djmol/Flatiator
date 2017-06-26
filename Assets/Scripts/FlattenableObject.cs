@@ -32,30 +32,36 @@ public class FlattenableObject : MonoBehaviour {
 			Dictionary<Vector2, Vector3> objectPoints = new Dictionary<Vector2, Vector3>();
 			List<Vector2> points = GetScreenPositionsFromMeshVertices(camera, ref objectPoints);
 			polygonPoints = GetConvexHull(points, ref objectPoints);
-			//showPolygonPoints = true;
-
+			
 			// Convert convex hull to a list of coplanar points
 			Poly2Mesh.Polygon flatShape = new Poly2Mesh.Polygon();
 			List<Vector3> hullPoints = GetHullPoints(polygonPoints, objectPoints);
 			Vector3 closest = GetClosestPoint(hullPoints, camera.transform.position);
-			List<Vector3> planePoints = MovePointsToPlane(hullPoints, closest, camera.transform.position - closest);
+			// TODO: (6/25) This needs to move all points to the same plane 
+			List<Vector3> planePoints = MovePointsTowardPoint(hullPoints, closest, camera.transform.position);
 
 			// Attempt to "thicken" flat object
 			Vector3 objDistance = (closest - camera.transform.position);
-			Vector3 farPoint = camera.transform.position + objDistance + (objDistance.normalized * .1f);
-			List<Vector3> farPlanePoints = MovePointsToPlane(planePoints, farPoint, objDistance);
+			Vector3 farPoint = camera.transform.position + objDistance + (objDistance.normalized * .05f);
+			List<Vector3> farPlanePoints = MovePoints(planePoints, farPoint, objDistance, camera.transform.position, .05f);
 
-			// Link pairs in planePoints and farPlanePoints
+			// Link pairs in planePoints and farPlanePoints to create sides of flat object
 			List<List<Vector3>> allPlanePoints = new List<List<Vector3>>() { planePoints, farPlanePoints };
 			for (int i = 0; i < planePoints.Count(); i++) {
 				int j = (i == planePoints.Count() - 1) ? 0 : i + 1;
 				allPlanePoints.Add(new List<Vector3>() { 
-					planePoints[i], planePoints[j], farPlanePoints[i], farPlanePoints[j] 
+					farPlanePoints[i], planePoints[j], planePoints[i]
+				});
+				allPlanePoints.Add(new List<Vector3>() { 
+					planePoints[j], farPlanePoints[i], farPlanePoints[j], 
 				});
 			}
-
-			// Create meshes from all plane points
-			// (This probably won't work)
+			
+			// Reverse backside points
+			allPlanePoints[1].Reverse();
+			
+			// Create meshes from all plane points and combine
+			GameObject flatObject = new GameObject("FinalFlatObject");
 			CombineInstance[] combine = new CombineInstance[allPlanePoints.Count()];
 			int k = 0;
 			foreach (List<Vector3> pointSet in allPlanePoints) {
@@ -63,46 +69,25 @@ public class FlattenableObject : MonoBehaviour {
 				planePoly.outside = pointSet;
 				GameObject planeObject = Poly2Mesh.CreateGameObject(planePoly, "Flat" + k);
 				combine[k].mesh = planeObject.GetComponent<MeshFilter>().mesh;
-				//planeObject.active = false;
+				combine[k].transform = flatObject.transform.localToWorldMatrix;
+				Destroy(planeObject);
 				k++;
 			}
-
-			GameObject flatObject = new GameObject();
 			flatObject.AddComponent<MeshFilter>();
-			flatObject.GetComponent<MeshFilter>().mesh = new Mesh();
-			flatObject.GetComponent<MeshFilter>().mesh.CombineMeshes(combine);
-			Debug.Log(flatObject.GetComponent<MeshFilter>().mesh.vertices.Count());
-
-			//flatShape.outside = planePoints;
-			//GameObject flatObject = Poly2Mesh.CreateGameObject(flatShape, "Flat" + name);
-			//flatObject.AddComponent<MeshCollider>();
-			//Rigidbody flatRb = flatObject.AddComponent<Rigidbody>();
-			//flatRb.AddForce(new Vector3(0f, 3f, 0f), ForceMode.Impulse);
-			//Renderer flatRend = flatObject.GetComponent<Renderer>();
-			//flatRend.material = rend.material;
-
-			foreach (Vector3 ppt in planePoints) {
-				GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-				sphere.transform.localScale -= new Vector3(0.95f, 0.95f, 0.95f);
-				sphere.transform.position = ppt;
-			}
-
-			// 6/6: Can't add MeshCollider... 3d-ify object a bit? Use move point to plane to make a dupe set a slight bit away?
-			//		Make backside visible? http://answers.unity3d.com/questions/280741/how-make-visible-the-back-face-of-a-mesh.html
-
-			/*string polyV = "";
-			foreach (Vector3 v in flatObject.outside) {
-				polyV += v + "\n";
-				GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-				sphere.transform.localScale -= new Vector3(0.95f, 0.95f, 0.95f);
-        		sphere.transform.position = v;
-			}
-			Debug.Log(polyV);*/
-
+			Mesh combinedMesh = new Mesh();
+			combinedMesh.CombineMeshes(combine);
+			flatObject.GetComponent<MeshFilter>().mesh = combinedMesh;
 			
+			// Apply material
+			MeshRenderer flatRend = flatObject.AddComponent<MeshRenderer>();
+			flatRend.material = rend.material;
 
-			Destroy(gameObject, 0);
-			
+			// Add collider and rigidbody
+			flatObject.AddComponent<MeshCollider>();
+			/*Rigidbody flatRb = flatObject.AddComponent<Rigidbody>();
+			flatRb.AddForce(new Vector3(0f, 3f, 0f), ForceMode.Impulse);*/
+
+			Destroy(gameObject, 0);	
 		}
 	}
 
@@ -276,6 +261,43 @@ public class FlattenableObject : MonoBehaviour {
 		return planePoints;
 	}
 
+	List<Vector3> MovePoints(List<Vector3> points, Vector3 planeOrigin, Vector3 planeNormal, Vector3 targetPoint, float distance) {
+		List<Vector3> planePoints = new List<Vector3>();
+
+		foreach (Vector3 v in points) {
+			Vector3 objDistance = v - targetPoint;
+			Vector3 farPoint = targetPoint + objDistance + (objDistance.normalized * distance);
+			Vector3 vec = v - farPoint;
+			Vector3 d = Vector3.Project(vec, planeNormal.normalized);
+			Vector3 projectedPoint = v - d;
+			planePoints.Add(projectedPoint);
+
+			/*GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+			cube.transform.localScale -= new Vector3(0.95f, 0.95f, 0.95f);
+			cube.transform.position = projectedPoint;*/
+		}
+
+		return planePoints;
+	}
+
+	List<Vector3> MovePointsTowardPoint(List<Vector3> points, Vector3 planeOrigin, Vector3 targetPoint) {
+		List<Vector3> planePoints = new List<Vector3>();
+
+		foreach (Vector3 v in points) {
+			Vector3 normal = targetPoint - v;
+			Vector3 vec = v - planeOrigin;
+			Vector3 d = Vector3.Project(vec, normal.normalized);
+			Vector3 projectedPoint = v - d;
+			planePoints.Add(projectedPoint);
+			Debug.DrawLine(v, projectedPoint, Color.magenta, 5000f);
+			/*GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+			cube.transform.localScale -= new Vector3(0.95f, 0.95f, 0.95f);
+			cube.transform.position = projectedPoint;*/
+		}
+
+		return planePoints;
+	}
+
 	List<Vector2> GetScreenPositionsFromRendererBounds(Camera camera) {
 		var screenPositions = new List<Vector2>();
 		
@@ -396,8 +418,7 @@ public class FlattenableObject : MonoBehaviour {
 	/// OnGUI is called for rendering and handling GUI events.
 	/// This function can be called multiple times per frame (one call per event).
 	/// </summary>
-	void OnGUI()
-	{
+	void OnGUI() {
 		List<Vector2> screenPositions = new List<Vector2>();
 		if (showPolygonPoints) {
 			int i = 0;
