@@ -38,7 +38,7 @@ public class FlattenableObject : MonoBehaviour {
 			List<Vector3> hullPoints = GetHullPoints(polygonPoints, objectPoints);
 			Vector3 closest = GetClosestPoint(hullPoints, camera.transform.position);
 			// TODO: (6/25) This needs to move all points to the same plane 
-			List<Vector3> planePoints = MovePointsTowardPoint(hullPoints, closest, camera.transform.position);
+			List<Vector3> planePoints = MovePointsToPlaneTowardPoint(hullPoints, closest, camera.transform.position);
 
 			// Attempt to "thicken" flat object
 			Vector3 objDistance = (closest - camera.transform.position);
@@ -82,10 +82,16 @@ public class FlattenableObject : MonoBehaviour {
 			MeshRenderer flatRend = flatObject.AddComponent<MeshRenderer>();
 			flatRend.material = rend.material;
 
+			// Make holdable
+			flatObject.AddComponent<HoldableObject>();
+			flatObject.layer = LayerMask.NameToLayer("HoldObject");
+
 			// Add collider and rigidbody
-			flatObject.AddComponent<MeshCollider>();
-			/*Rigidbody flatRb = flatObject.AddComponent<Rigidbody>();
-			flatRb.AddForce(new Vector3(0f, 3f, 0f), ForceMode.Impulse);*/
+			MeshCollider flatCd = flatObject.AddComponent<MeshCollider>();
+			flatCd.convex = true;
+
+			Rigidbody flatRb = flatObject.AddComponent<Rigidbody>();
+			flatRb.AddForce(new Vector3(0f, 1f, 0f), ForceMode.Impulse);
 
 			Destroy(gameObject, 0);	
 		}
@@ -244,32 +250,15 @@ public class FlattenableObject : MonoBehaviour {
 		return hullPoints;
 	}
 
-	List<Vector3> MovePointsToPlane(List<Vector3> points, Vector3 planeOrigin, Vector3 planeNormal) {
-		List<Vector3> planePoints = new List<Vector3>();
-
-		foreach (Vector3 v in points) {
-			Vector3 vec = v - planeOrigin;
-			Vector3 d = Vector3.Project(vec, planeNormal.normalized);
-			Vector3 projectedPoint = v - d;
-			planePoints.Add(projectedPoint);
-
-			/*GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-			cube.transform.localScale -= new Vector3(0.95f, 0.95f, 0.95f);
-			cube.transform.position = projectedPoint;*/
-		}
-
-		return planePoints;
-	}
-
 	List<Vector3> MovePoints(List<Vector3> points, Vector3 planeOrigin, Vector3 planeNormal, Vector3 targetPoint, float distance) {
 		List<Vector3> planePoints = new List<Vector3>();
 
-		foreach (Vector3 v in points) {
-			Vector3 objDistance = v - targetPoint;
+		foreach (Vector3 point in points) {
+			Vector3 objDistance = point - targetPoint;
 			Vector3 farPoint = targetPoint + objDistance + (objDistance.normalized * distance);
-			Vector3 vec = v - farPoint;
-			Vector3 d = Vector3.Project(vec, planeNormal.normalized);
-			Vector3 projectedPoint = v - d;
+			Vector3 toFarPoint = point - farPoint;
+			Vector3 d = Vector3.Project(toFarPoint, planeNormal.normalized);
+			Vector3 projectedPoint = point - d;
 			planePoints.Add(projectedPoint);
 
 			/*GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -280,16 +269,33 @@ public class FlattenableObject : MonoBehaviour {
 		return planePoints;
 	}
 
-	List<Vector3> MovePointsTowardPoint(List<Vector3> points, Vector3 planeOrigin, Vector3 targetPoint) {
+	List<Vector3> MovePointsToPlane(List<Vector3> points, Vector3 planeOrigin, Vector3 planeNormal) {
 		List<Vector3> planePoints = new List<Vector3>();
 
-		foreach (Vector3 v in points) {
-			Vector3 normal = targetPoint - v;
-			Vector3 vec = v - planeOrigin;
-			Vector3 d = Vector3.Project(vec, normal.normalized);
-			Vector3 projectedPoint = v - d;
+		foreach (Vector3 point in points) {
+			Vector3 toOrigin = point - planeOrigin;
+			Vector3 d = Vector3.Project(toOrigin, planeNormal.normalized);
+			Vector3 projectedPoint = point - d;
 			planePoints.Add(projectedPoint);
-			Debug.DrawLine(v, projectedPoint, Color.magenta, 5000f);
+
+			/*GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+			cube.transform.localScale -= new Vector3(0.95f, 0.95f, 0.95f);
+			cube.transform.position = projectedPoint;*/
+		}
+
+		return planePoints;
+	}
+
+	List<Vector3> MovePointsToPlaneTowardPoint(List<Vector3> points, Vector3 planeOrigin, Vector3 targetPoint) {
+		List<Vector3> planePoints = new List<Vector3>();
+
+		foreach (Vector3 point in points) {
+			Vector3 normal = targetPoint - point;
+			Vector3 toOrigin = point - planeOrigin;
+			Vector3 d = Vector3.Project(toOrigin, normal);
+			Vector3 projectedPoint = point - d;
+			planePoints.Add(projectedPoint);
+			
 			/*GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
 			cube.transform.localScale -= new Vector3(0.95f, 0.95f, 0.95f);
 			cube.transform.position = projectedPoint;*/
